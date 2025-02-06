@@ -13,7 +13,11 @@ interface ExpenseData {
   amount: number;
   category: string;
   status: string;
+  paidBy: string;
   bill?: string;
+  notes?: string;
+  weddingLocation?: string;
+  localAmount?: number;
 }
 
 console.log("Sheet updater function initialized")
@@ -26,8 +30,19 @@ serve(async (req) => {
     const body = await req.json()
     console.log(`[${requestId}] Request body:`, JSON.stringify(body, null, 2))
     
-    const { expense, date, amount, category, status, bill } = body as ExpenseData
-    console.log(`[${requestId}] Parsed expense data:`, { expense, date, amount, category, status, bill })
+    const { 
+      expense, 
+      date, 
+      amount, 
+      category, 
+      status, 
+      bill, 
+      notes, 
+      weddingLocation, 
+      localAmount,
+      paidBy
+    } = body as ExpenseData
+    console.log(`[${requestId}] Parsed expense data:`, { expense, date, amount, category, status, bill, notes, weddingLocation, localAmount, paidBy })
 
     // Check environment variables first
     const clientEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")
@@ -42,7 +57,7 @@ serve(async (req) => {
       ].filter(Boolean).join(", ")}`)
     }
 
-    // First, get an access token
+    // Get access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -50,29 +65,51 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: await createJWT(
-          clientEmail,
-          privateKey.replace(/\\n/g, '\n')
-        )
+        assertion: await createJWT(clientEmail, privateKey.replace(/\\n/g, '\n'))
       })
     })
 
     const { access_token } = await tokenResponse.json()
-    
-    const values = [[expense, date, amount, category, status, bill || '']]
-    console.log(`[${requestId}] Prepared values for sheet:`, values)
 
-    console.log(`[${requestId}] Spreadsheet ID:`, spreadsheetId)
+    // First, get the headers
+    const headersResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Expenses!1:1`,
+      {
+        headers: {
+          'Authorization': `Bearer ${access_token}`,
+        }
+      }
+    )
+
+    const headersData = await headersResponse.json()
+    const headers = headersData.values?.[0] || []
+    console.log(`[${requestId}] Sheet headers:`, headers)
+
+    // Map data to columns based on headers
+    const values = [headers.map(header => {
+      switch(header.toLowerCase()) {
+        case 'expense': return expense;
+        case 'date': return date;
+        case 'amount': return amount;
+        case 'category': return category;
+        case 'status': return status;
+        case 'paid by': return paidBy;
+        case 'bill': return bill || '';
+        case 'notes': return notes || '';
+        case 'wedding location': return weddingLocation || '';
+        case 'local amount': return localAmount || '';
+        default: return ''; // For any unknown columns
+      }
+    })]
+
+    console.log(`[${requestId}] Prepared values for sheet:`, values)
     
-    console.log("Environment variables check:", {
-      serviceEmail: Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
-      hasPrivateKey: !!Deno.env.get("GOOGLE_PRIVATE_KEY"),
-      spreadsheetId: Deno.env.get("SPREADSHEET_ID")
-    })
+    // Make request to Google Sheets API using column letter notation
+    const lastColumn = String.fromCharCode(64 + headers.length) // Convert number to letter (1=A, 2=B, etc)
+    const range = `Expenses!A:${lastColumn}`
     
-    // Make request to Google Sheets API
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Expenses!A:F:append?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
       {
         method: 'POST',
         headers: {

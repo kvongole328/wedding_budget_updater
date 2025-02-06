@@ -15,8 +15,13 @@ Adds new expenses to the wedding budget Google Sheet.
   - amount (number)
   - category (string)
   - status (string)
+  - paidBy (string)
 - **Optional Fields**:
   - bill (string, URL)
+  - notes (string)
+  - weddingLocation (string)
+  - localAmount (number)
+
 
 ## Setup
 
@@ -47,6 +52,7 @@ Adds new expenses to the wedding budget Google Sheet.
        "amount": 500,
        "category": "Food",
        "status": "Paid"
+       "paidBy":"KV+Karrot"
      }'
    ```
 
